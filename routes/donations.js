@@ -223,6 +223,12 @@ router.delete('/:id', authMiddleware, async (req, res) => {
         // }
 
         await donation.deleteOne();
+
+        const io = req.app.get('io');
+        if (io) {
+            io.emit('donation:deleted', req.params.id);
+        }
+
         res.json({ success: true, message: 'Donation deleted' });
     } catch (err) {
         console.error(err);
