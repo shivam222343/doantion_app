@@ -203,6 +203,60 @@ router.put('/:id', authMiddleware, async (req, res) => {
     }
 });
 
+// MARK AS RECEIVED (Completed)
+router.put('/:id/received', authMiddleware, async (req, res) => {
+    try {
+        const donation = await Donation.findById(req.params.id)
+            .populate('donorId', 'name');
+
+        if (!donation) {
+            return res.status(404).json({ error: 'Donation not found' });
+        }
+
+        // Verify that the requester is the accepted receiver
+        // We can check if req.user.id matches donation.receiverId
+        if (donation.receiverId && donation.receiverId.toString() !== req.user.id) {
+            return res.status(403).json({ error: 'Not authorized: You are not the accepted receiver' });
+        }
+
+        donation.status = 'completed';
+        await donation.save();
+
+        // Notify Donor
+        const Notification = require('../models/Notification');
+        const notification = new Notification({
+            userId: donation.donorId._id,
+            type: 'donation_completed',
+            title: '🎉 Donation Received!',
+            message: `The receiver has marked your donation "${donation.title}" as received. Thank you for your kindness!`,
+            data: {
+                donationId: donation._id
+            }
+        });
+        await notification.save();
+
+        const io = req.app.get('io');
+        if (io) {
+            // Notify donor
+            io.to(donation.donorId._id.toString()).emit('notification:new', {
+                notification,
+                unreadCount: await Notification.countDocuments({
+                    userId: donation.donorId._id,
+                    read: false
+                })
+            });
+
+            // Notify everyone of status update (so it can be removed/updated in lists)
+            io.emit('donation:updated', donation);
+        }
+
+        res.json({ success: true, donation });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 // DELETE DONATION
 router.delete('/:id', authMiddleware, async (req, res) => {
     try {
