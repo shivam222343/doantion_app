@@ -8,7 +8,7 @@ const notificationSchema = new mongoose.Schema({
     },
     type: {
         type: String,
-        enum: ['donation_request', 'donation_accepted', 'donation_rejected', 'donation_new', 'say_thanks'],
+        enum: ['donation_request', 'donation_accepted', 'donation_rejected', 'donation_new', 'say_thanks', 'donation_completed'],
         required: true
     },
     title: {
