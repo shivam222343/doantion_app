@@ -356,6 +356,9 @@ router.post('/:id/thanks', authMiddleware, async (req, res) => {
             });
         }
 
+        request.thanksSent = true;
+        await request.save();
+
         res.json({ success: true, message: 'Thanks sent!' });
     } catch (err) {
         console.error(err);

@@ -26,6 +26,10 @@ const donationRequestSchema = new mongoose.Schema({
         trim: true,
         default: ''
     },
+    thanksSent: {
+        type: Boolean,
+        default: false
+    },
     createdAt: {
         type: Date,
         default: Date.now

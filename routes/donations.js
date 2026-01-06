@@ -162,7 +162,8 @@ router.get('/my-donations', authMiddleware, async (req, res) => {
 router.get('/:id', authMiddleware, async (req, res) => {
     try {
         const donation = await Donation.findById(req.params.id)
-            .populate('donorId', 'name email phone profileImage address home street');
+            .populate('donorId', 'name email phone profileImage address home street')
+            .populate('acceptedRequestId', 'thanksSent');
 
         if (!donation) {
             return res.status(404).json({ error: 'Donation not found' });
