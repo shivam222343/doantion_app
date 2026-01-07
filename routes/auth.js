@@ -40,7 +40,11 @@ router.post('/register', async (req, res) => {
                 name: user.name,
                 phone: user.phone,
                 profileCompleted: user.profileCompleted,
-                points: user.points || 0
+                points: user.points || 0,
+                profileImage: user.profileImage || '',
+                address: user.address || '',
+                home: user.home || '',
+                street: user.street || ''
             }
         });
 
@@ -78,7 +82,11 @@ router.post('/login', async (req, res) => {
                 name: user.name,
                 phone: user.phone,
                 profileCompleted: user.profileCompleted,
-                points: user.points || 0
+                points: user.points || 0,
+                profileImage: user.profileImage || '',
+                address: user.address || '',
+                home: user.home || '',
+                street: user.street || ''
             }
         });
 
