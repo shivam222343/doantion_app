@@ -112,25 +112,41 @@ router.post('/create', authMiddleware, async (req, res) => {
 // GET NEARBY DONATIONS
 router.get('/nearby', authMiddleware, async (req, res) => {
     try {
-        const { latitude, longitude, radius = 5000 } = req.query; // Radius in meters (default 5km)
+        const { latitude, longitude, radius = 50000 } = req.query; // Default 50km
 
         if (!latitude || !longitude) {
             return res.status(400).json({ error: 'Latitude and Longitude required' });
         }
 
-        const donations = await Donation.find({
-            status: 'pending',
-            donorId: { $ne: req.user.id },
-            pickupLocation: {
-                $near: {
-                    $geometry: {
+        const donations = await Donation.aggregate([
+            {
+                $geoNear: {
+                    near: {
                         type: "Point",
                         coordinates: [parseFloat(longitude), parseFloat(latitude)]
                     },
-                    $maxDistance: parseInt(radius)
+                    distanceField: "distance",
+                    maxDistance: parseInt(radius),
+                    spherical: true,
+                    query: { status: 'pending' }
+                }
+            },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'donorId',
+                    foreignField: '_id',
+                    as: 'donorId'
+                }
+            },
+            { $unwind: '$donorId' },
+            {
+                $project: {
+                    'donorId.password': 0,
+                    'donorId.tokens': 0
                 }
             }
-        }).populate('donorId', 'name phone');
+        ]);
 
         res.json(donations);
 
