@@ -106,4 +106,66 @@ router.put('/profile', authMiddleware, async (req, res) => {
     }
 });
 
+// GET LEADERBOARD
+router.get('/leaderboard', authMiddleware, async (req, res) => {
+    try {
+        const { page = 1, limit = 10 } = req.query;
+        const skip = (page - 1) * limit;
+
+        const topDonors = await User.find({ points: { $gt: 0 } })
+            .select('name profileImage points level badges')
+            .sort({ points: -1 })
+            .skip(skip)
+            .limit(parseInt(limit));
+
+        const total = await User.countDocuments({ points: { $gt: 0 } });
+
+        res.json({
+            users: topDonors,
+            total,
+            page: parseInt(page),
+            hasMore: total > skip + topDonors.length
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// GET PUBLIC PROFILE (with donations and badges)
+router.get('/profile/:userId', authMiddleware, async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        const user = await User.findById(userId).select('name profileImage points level badges createdAt');
+
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Fetch user's public donations
+        const donations = await Donation.find({ donorId: userId, status: 'pending' })
+            .sort({ createdAt: -1 })
+            .limit(10);
+
+        // Fetch stats
+        const donationCount = await Donation.countDocuments({ donorId: userId });
+        const impactCount = await Donation.countDocuments({
+            donorId: userId,
+            status: { $in: ['in-progress', 'completed'] }
+        });
+
+        res.json({
+            user,
+            donations,
+            stats: {
+                totalDonations: donationCount,
+                impact: impactCount
+            }
+        });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 module.exports = router;

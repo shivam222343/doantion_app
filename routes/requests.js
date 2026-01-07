@@ -204,9 +204,21 @@ router.put('/:id/accept', authMiddleware, async (req, res) => {
         );
 
         // AWARD POINTS TO DONOR
-        await User.findByIdAndUpdate(req.user.id, {
-            $inc: { points: 100 }
-        });
+        const donorUser = await User.findById(req.user.id);
+        if (donorUser) {
+            donorUser.points = (donorUser.points || 0) + 100;
+            const { checkAndAwardBadges } = require('../utils/badgeHelper');
+            const badgesEarned = await checkAndAwardBadges(donorUser);
+
+            const io = req.app.get('io');
+            if (io && badgesEarned) {
+                io.to(donorUser._id.toString()).emit('user:level_up', {
+                    points: donorUser.points,
+                    level: donorUser.level,
+                    badges: donorUser.badges
+                });
+            }
+        }
 
         // Create notification for requester
         const notification = new Notification({
