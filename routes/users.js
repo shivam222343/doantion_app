@@ -204,6 +204,7 @@ router.post('/badges/claim', authMiddleware, async (req, res) => {
             name: claimedBadge.name,
             icon: claimedBadge.icon,
             category: claimedBadge.category,
+            color: claimedBadge.color,
             earnedAt: new Date()
         });
 
