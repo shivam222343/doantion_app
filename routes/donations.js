@@ -236,71 +236,106 @@ router.put('/:id', authMiddleware, async (req, res) => {
 // MARK AS RECEIVED (Completed)
 router.put('/:id/received', authMiddleware, async (req, res) => {
     try {
-        const donation = await Donation.findById(req.params.id)
-            .populate('donorId', 'name email phone profileImage address home street');
+        const donation = await Donation.findById(req.params.id);
 
         if (!donation) {
             return res.status(404).json({ error: 'Donation not found' });
         }
 
-        // Verify that the requester is the accepted receiver
-        // We can check if req.user.id matches donation.receiverId
-        if (donation.receiverId && donation.receiverId.toString() !== req.user.id) {
-            return res.status(403).json({ error: 'Not authorized: You are not the accepted receiver' });
+        // 1. Authorization Check:
+        // Must be the accepted receiver to mark it as received.
+        // First check receiverId, then fallback to checking the accepted request
+        let authorized = false;
+
+        if (donation.receiverId && donation.receiverId.toString() === req.user.id) {
+            authorized = true;
+        } else if (donation.acceptedRequestId) {
+            const DonationRequest = require('../models/DonationRequest');
+            const acceptedReq = await DonationRequest.findById(donation.acceptedRequestId);
+            if (acceptedReq && acceptedReq.requesterId.toString() === req.user.id) {
+                authorized = true;
+                // Healing data: set receiverId if it was missing
+                donation.receiverId = acceptedReq.requesterId;
+            }
         }
 
+        if (!authorized) {
+            return res.status(403).json({ error: 'Not authorized: Only the accepted receiver can mark this item as received' });
+        }
+
+        if (donation.status === 'completed') {
+            return res.status(400).json({ error: 'Donation is already marked as completed' });
+        }
+
+        // 2. Update Status
         donation.status = 'completed';
         await donation.save();
 
-        // Notify Donor
+        // 3. Award Points and Badges to Donor
+        const donor = await User.findById(donation.donorId);
+        if (donor) {
+            const pointsToAdd = 100;
+            donor.points = (donor.points || 0) + pointsToAdd;
+
+            const { checkAndAwardBadges } = require('../utils/badgeHelper');
+            const badgesEarned = await checkAndAwardBadges(donor);
+
+            await donor.save();
+
+            // Notify Donor via Sockets
+            const io = req.app.get('io');
+            if (io) {
+                // If they leveled up (earned a new badge), notify them
+                if (badgesEarned) {
+                    io.to(donor._id.toString()).emit('user:badges_updated', {
+                        badges: donor.badges,
+                        pendingBadges: donor.pendingBadges,
+                        level: donor.level,
+                        points: donor.points
+                    });
+                } else {
+                    // Just update points
+                    io.to(donor._id.toString()).emit('user:points_updated', {
+                        points: donor.points
+                    });
+                }
+            }
+        }
+
+        // 4. Create Notification for Donor
         const Notification = require('../models/Notification');
         const notification = new Notification({
-            userId: donation.donorId._id,
+            userId: donation.donorId,
             type: 'donation_completed',
             title: '🎉 Donation Received!',
-            message: `The receiver has marked your donation "${donation.title}" as received. Thank you for your kindness!`,
+            message: `The receiver has marked your donation "${donation.title}" as received. You earned ${100} points! Thank you for your kindness!`,
             data: {
                 donationId: donation._id
             }
         });
         await notification.save();
 
-        // AWARD POINTS TO DONOR (100 points for successful completion)
-        const donor = await User.findById(donation.donorId._id);
-        if (donor) {
-            donor.points = (donor.points || 0) + 100;
-            const { checkAndAwardBadges } = require('../utils/badgeHelper');
-            const badgesEarned = await checkAndAwardBadges(donor);
-
-            const io = req.app.get('io');
-            if (io && badgesEarned) {
-                io.to(donor._id.toString()).emit('user:level_up', {
-                    points: donor.points,
-                    level: donor.level,
-                    badges: donor.badges
-                });
-            }
-        }
-
+        // 5. Global Real-time Updates
         const io = req.app.get('io');
         if (io) {
-            // Notify donor
-            io.to(donation.donorId._id.toString()).emit('notification:new', {
+            // Send new notification to donor
+            io.to(donation.donorId.toString()).emit('notification:new', {
                 notification,
                 unreadCount: await Notification.countDocuments({
-                    userId: donation.donorId._id,
+                    userId: donation.donorId,
                     read: false
                 })
             });
 
-            // Notify everyone of status update (so it can be removed/updated in lists)
-            io.emit('donation:updated', donation);
+            // Update anyone viewing this donation (status changed to completed)
+            const populatedDonation = await Donation.findById(donation._id).populate('donorId', 'name profileImage');
+            io.emit('donation:updated', populatedDonation);
         }
 
         res.json({ success: true, donation });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Server error' });
+        console.error('Mark as Received Error:', err);
+        res.status(500).json({ error: 'Server error marking donation as received' });
     }
 });
 
