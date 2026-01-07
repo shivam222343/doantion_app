@@ -112,13 +112,13 @@ router.get('/leaderboard', authMiddleware, async (req, res) => {
         const { page = 1, limit = 10 } = req.query;
         const skip = (page - 1) * limit;
 
-        const topDonors = await User.find({ points: { $gt: 0 } })
+        const topDonors = await User.find({})
             .select('name profileImage points level badges')
             .sort({ points: -1 })
             .skip(skip)
             .limit(parseInt(limit));
 
-        const total = await User.countDocuments({ points: { $gt: 0 } });
+        const total = await User.countDocuments({});
 
         res.json({
             users: topDonors,
