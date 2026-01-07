@@ -93,19 +93,22 @@ router.post('/create', authMiddleware, async (req, res) => {
 
         await newDonation.save();
 
+        // Populate donor info for social real-time update
+        const populatedDonation = await Donation.findById(newDonation._id).populate('donorId', 'name profileImage');
+
         const io = req.app.get('io');
         if (io) {
             io.emit('donation:new', {
-                donation: newDonation,
+                donation: populatedDonation,
                 donorLocation: { latitude: location.latitude, longitude: location.longitude }
             });
         }
 
-        res.status(201).json({ success: true, donation: newDonation });
+        res.status(201).json({ success: true, donation: populatedDonation });
 
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Server error' });
+        console.error("Donation Creation Error:", err);
+        res.status(500).json({ error: 'Server error creating donation' });
     }
 });
 
@@ -128,6 +131,7 @@ router.get('/nearby', authMiddleware, async (req, res) => {
                     distanceField: "distance",
                     maxDistance: parseInt(radius),
                     spherical: true,
+                    key: "pickupLocation",
                     query: { status: 'pending' }
                 }
             },
@@ -151,8 +155,8 @@ router.get('/nearby', authMiddleware, async (req, res) => {
         res.json(donations);
 
     } catch (err) {
-        console.error("Nearby Error", err);
-        res.status(500).json({ error: 'Server error' });
+        console.error("Nearby Donations Error:", err.message, err.stack);
+        res.status(500).json({ error: 'Server error fetching nearby donations' });
     }
 });
 
