@@ -82,6 +82,9 @@ router.post('/create', authMiddleware, async (req, res) => {
         // Emit socket event to donor
         const io = req.app.get('io');
         if (io) {
+            // Send full populated request for "Action Needed" dashboard section
+            io.to(donation.donorId._id.toString()).emit('request:new', newRequest);
+
             io.to(donation.donorId._id.toString()).emit('notification:new', {
                 notification,
                 unreadCount: await Notification.countDocuments({
@@ -222,6 +225,9 @@ router.put('/:id/accept', authMiddleware, async (req, res) => {
         // Emit socket event
         const io = req.app.get('io');
         if (io) {
+            // Notify donor to update their dashboard
+            io.to(request.donorId.toString()).emit('request:updated', request);
+
             io.to(request.requesterId._id.toString()).emit('notification:new', {
                 notification,
                 unreadCount: await Notification.countDocuments({
@@ -278,6 +284,9 @@ router.put('/:id/reject', authMiddleware, async (req, res) => {
         // Emit socket event
         const io = req.app.get('io');
         if (io) {
+            // Notify donor to update their dashboard
+            io.to(request.donorId.toString()).emit('request:updated', request);
+
             io.to(request.requesterId._id.toString()).emit('notification:new', {
                 notification,
                 unreadCount: await Notification.countDocuments({

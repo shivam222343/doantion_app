@@ -237,7 +237,7 @@ router.put('/:id', authMiddleware, async (req, res) => {
 router.put('/:id/received', authMiddleware, async (req, res) => {
     try {
         const donation = await Donation.findById(req.params.id)
-            .populate('donorId', 'name');
+            .populate('donorId', 'name email phone profileImage address home street');
 
         if (!donation) {
             return res.status(404).json({ error: 'Donation not found' });
@@ -264,6 +264,23 @@ router.put('/:id/received', authMiddleware, async (req, res) => {
             }
         });
         await notification.save();
+
+        // AWARD POINTS TO DONOR (100 points for successful completion)
+        const donor = await User.findById(donation.donorId._id);
+        if (donor) {
+            donor.points = (donor.points || 0) + 100;
+            const { checkAndAwardBadges } = require('../utils/badgeHelper');
+            const badgesEarned = await checkAndAwardBadges(donor);
+
+            const io = req.app.get('io');
+            if (io && badgesEarned) {
+                io.to(donor._id.toString()).emit('user:level_up', {
+                    points: donor.points,
+                    level: donor.level,
+                    badges: donor.badges
+                });
+            }
+        }
 
         const io = req.app.get('io');
         if (io) {

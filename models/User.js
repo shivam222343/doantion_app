@@ -63,6 +63,19 @@ const userSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    level: {
+        type: Number,
+        default: 1
+    },
+    badges: [{
+        name: String,
+        icon: String,
+        earnedAt: {
+            type: Date,
+            default: Date.now
+        },
+        category: String // e.g., 'Milestone', 'Category Expert', etc.
+    }],
     createdAt: {
         type: Date,
         default: Date.now
