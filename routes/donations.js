@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Donation = require('../models/Donation');
 const User = require('../models/User');
+const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const axios = require('axios'); // Added axios for geocoding proxy
 
@@ -132,7 +133,10 @@ router.get('/nearby', authMiddleware, async (req, res) => {
                     maxDistance: parseInt(radius),
                     spherical: true,
                     key: "pickupLocation",
-                    query: { status: 'pending' }
+                    query: {
+                        status: 'pending',
+                        donorId: { $ne: new mongoose.Types.ObjectId(req.user.id) }
+                    }
                 }
             },
             {
@@ -167,7 +171,12 @@ router.get('/my-donations', authMiddleware, async (req, res) => {
         let query = { donorId: req.user.id };
 
         if (category && category !== 'All') {
-            query.category = category;
+            if (category === 'Others') {
+                const standardCategories = ['Food', 'Clothes', 'Medicines', 'Furniture', 'Toys'];
+                query.category = { $nin: standardCategories };
+            } else {
+                query.category = category;
+            }
         }
 
         const donations = await Donation.find(query).sort({ createdAt: -1 });
