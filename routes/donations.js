@@ -164,6 +164,94 @@ router.get('/nearby', authMiddleware, async (req, res) => {
     }
 });
 
+// GET ALL UNACCEPTED DONATIONS (with optional radius filter)
+router.get('/all', authMiddleware, async (req, res) => {
+    try {
+        const { latitude, longitude, radius } = req.query;
+
+        // If location and radius are provided, use geo filtering
+        if (latitude && longitude && radius) {
+            const donations = await Donation.aggregate([
+                {
+                    $geoNear: {
+                        near: {
+                            type: "Point",
+                            coordinates: [parseFloat(longitude), parseFloat(latitude)]
+                        },
+                        distanceField: "distance",
+                        maxDistance: parseInt(radius),
+                        spherical: true,
+                        key: "pickupLocation",
+                        query: {
+                            status: 'pending',
+                            donorId: { $ne: new mongoose.Types.ObjectId(req.user.id) }
+                        }
+                    }
+                },
+                {
+                    $lookup: {
+                        from: 'users',
+                        localField: 'donorId',
+                        foreignField: '_id',
+                        as: 'donorId'
+                    }
+                },
+                { $unwind: '$donorId' },
+                {
+                    $project: {
+                        'donorId.password': 0,
+                        'donorId.tokens': 0
+                    }
+                },
+                { $sort: { createdAt: -1 } }
+            ]);
+
+            return res.json(donations);
+        }
+
+        // Otherwise, return all pending donations (excluding user's own)
+        const donations = await Donation.find({
+            status: 'pending',
+            donorId: { $ne: req.user.id }
+        })
+            .populate('donorId', 'name email phone profileImage address home street')
+            .sort({ createdAt: -1 });
+
+        // If location is provided (but no radius), calculate distances
+        if (latitude && longitude) {
+            const donationsWithDistance = donations.map(donation => {
+                const donationObj = donation.toObject();
+                if (donation.pickupLocation && donation.pickupLocation.coordinates) {
+                    const [donLon, donLat] = donation.pickupLocation.coordinates;
+                    // Calculate distance using Haversine formula
+                    const R = 6371e3; // Earth radius in meters
+                    const φ1 = parseFloat(latitude) * Math.PI / 180;
+                    const φ2 = donLat * Math.PI / 180;
+                    const Δφ = (donLat - parseFloat(latitude)) * Math.PI / 180;
+                    const Δλ = (donLon - parseFloat(longitude)) * Math.PI / 180;
+
+                    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                        Math.cos(φ1) * Math.cos(φ2) *
+                        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                    const distance = R * c;
+
+                    donationObj.distance = distance;
+                }
+                return donationObj;
+            });
+
+            return res.json(donationsWithDistance);
+        }
+
+        res.json(donations);
+
+    } catch (err) {
+        console.error("All Donations Error:", err.message, err.stack);
+        res.status(500).json({ error: 'Server error fetching all donations' });
+    }
+});
+
 // GET MY DONATIONS
 router.get('/my-donations', authMiddleware, async (req, res) => {
     try {

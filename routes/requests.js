@@ -247,6 +247,10 @@ router.put('/:id/accept', authMiddleware, async (req, res) => {
                     read: false
                 })
             });
+
+            // Emit donation update to all users (for Find screen)
+            const updatedDonation = await Donation.findById(donationId).populate('donorId', 'name profileImage');
+            io.emit('donation:updated', updatedDonation);
         }
 
         res.json({ success: true, request });
@@ -306,6 +310,10 @@ router.put('/:id/reject', authMiddleware, async (req, res) => {
                     read: false
                 })
             });
+
+            // Emit donation update to all users (for Find screen)
+            const updatedDonation = await Donation.findById(donationId).populate('donorId', 'name profileImage');
+            io.emit('donation:updated', updatedDonation);
         }
 
         res.json({ success: true, request });
