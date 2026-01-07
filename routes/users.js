@@ -168,4 +168,15 @@ router.get('/profile/:userId', authMiddleware, async (req, res) => {
     }
 });
 
+// GET ALL POSSIBLE BADGES (Catalog)
+router.get('/badges', authMiddleware, async (req, res) => {
+    try {
+        const { BADGE_LEVELS } = require('../utils/badgeHelper');
+        res.json(BADGE_LEVELS);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 module.exports = router;
