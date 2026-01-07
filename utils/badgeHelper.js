@@ -28,22 +28,22 @@ const checkAndAwardBadges = async (user) => {
     let updated = false;
     const currentPoints = user.points || 0;
     const currentBadgeNames = user.badges.map(b => b.name);
+    const pendingBadgeNames = (user.pendingBadges || []).map(b => b.name);
 
     for (const badge of BADGE_LEVELS) {
-        if (currentPoints >= badge.threshold && !currentBadgeNames.includes(badge.name)) {
-            user.badges.push({
+        if (currentPoints >= badge.threshold && !currentBadgeNames.includes(badge.name) && !pendingBadgeNames.includes(badge.name)) {
+            if (!user.pendingBadges) user.pendingBadges = [];
+            user.pendingBadges.push({
                 name: badge.name,
                 icon: badge.icon,
                 category: badge.category,
-                earnedAt: new Date()
+                threshold: badge.threshold
             });
             updated = true;
         }
     }
 
     if (updated) {
-        // Update level based on number of badges
-        user.level = user.badges.length + 1;
         await user.save();
     }
 

@@ -76,6 +76,12 @@ const userSchema = new mongoose.Schema({
         },
         category: String // e.g., 'Milestone', 'Category Expert', etc.
     }],
+    pendingBadges: [{
+        name: String,
+        icon: String,
+        threshold: Number,
+        category: String
+    }],
     createdAt: {
         type: Date,
         default: Date.now

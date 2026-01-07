@@ -3,6 +3,7 @@ const router = express.Router();
 const User = require('../models/User');
 const Donation = require('../models/Donation');
 const DonationRequest = require('../models/DonationRequest');
+const { checkAndAwardBadges } = require('../utils/badgeHelper');
 const jwt = require('jsonwebtoken');
 const cloudinary = require('cloudinary').v2;
 
@@ -112,8 +113,23 @@ router.get('/leaderboard', authMiddleware, async (req, res) => {
         const { page = 1, limit = 10 } = req.query;
         const skip = (page - 1) * limit;
 
+        // One-time fix for existing points (like the user who has 200 pts but no badges)
+        const currentUser = await User.findById(req.user.id);
+        if (currentUser) {
+            const newBadgesTriggered = await checkAndAwardBadges(currentUser);
+            if (newBadgesTriggered) {
+                const io = req.app.get('io');
+                if (io) {
+                    io.to(currentUser._id.toString()).emit('user:badges_updated', {
+                        pendingBadges: currentUser.pendingBadges,
+                        badges: currentUser.badges
+                    });
+                }
+            }
+        }
+
         const topDonors = await User.find({})
-            .select('name profileImage points level badges')
+            .select('name profileImage points level badges pendingBadges')
             .sort({ points: -1 })
             .skip(skip)
             .limit(parseInt(limit));
@@ -136,7 +152,7 @@ router.get('/leaderboard', authMiddleware, async (req, res) => {
 router.get('/profile/:userId', authMiddleware, async (req, res) => {
     try {
         const userId = req.params.userId;
-        const user = await User.findById(userId).select('name profileImage points level badges createdAt');
+        const user = await User.findById(userId).select('name profileImage points level badges pendingBadges createdAt');
 
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
@@ -162,6 +178,53 @@ router.get('/profile/:userId', authMiddleware, async (req, res) => {
                 impact: impactCount
             }
         });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// CLAIM A BADGE
+router.post('/badges/claim', authMiddleware, async (req, res) => {
+    try {
+        const { badgeName } = req.body;
+        const user = await User.findById(req.user.id);
+
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        const badgeIndex = user.pendingBadges.findIndex(b => b.name === badgeName);
+        if (badgeIndex === -1) {
+            return res.status(400).json({ error: 'Badge not found in pending list' });
+        }
+
+        const claimedBadge = user.pendingBadges[badgeIndex];
+
+        // Move to earned badges
+        user.badges.push({
+            name: claimedBadge.name,
+            icon: claimedBadge.icon,
+            category: claimedBadge.category,
+            earnedAt: new Date()
+        });
+
+        // Remove from pending
+        user.pendingBadges.splice(badgeIndex, 1);
+
+        // Update level
+        user.level = user.badges.length + 1;
+
+        await user.save();
+
+        const io = req.app.get('io');
+        if (io) {
+            io.to(user._id.toString()).emit('user:badges_updated', {
+                badges: user.badges,
+                pendingBadges: user.pendingBadges,
+                level: user.level
+            });
+        }
+
+        res.json({ success: true, user });
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: 'Server error' });
